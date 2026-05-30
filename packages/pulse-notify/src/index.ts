@@ -114,14 +114,22 @@ export function useStellarEvent<T extends NormalizedEvent = NormalizedEvent>(
   return state;
 }
 
-export function useStellarPayment(serverUrl: string, address: string) {
+export function useStellarPayment(
+  serverUrl: string,
+  address: string,
+  options?: Pick<UseEventConfig, "filter">
+) {
   return useStellarEvent<Extract<NormalizedEvent, { type: "payment.received" }>>(
     serverUrl,
     address,
-    { event: "payment.received" }
+    { event: "payment.received", ...options }
   );
 }
 
-export function useStellarActivity(serverUrl: string, address: string) {
-  return useStellarEvent(serverUrl, address, { event: "*" });
+export function useStellarActivity(
+  serverUrl: string,
+  address: string,
+  options?: Pick<UseEventConfig, "filter">
+) {
+  return useStellarEvent(serverUrl, address, { event: "*", ...options });
 }
