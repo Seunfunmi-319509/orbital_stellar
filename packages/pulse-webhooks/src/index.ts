@@ -1,12 +1,14 @@
 import type { NormalizedEvent, Watcher, WatcherNotification } from "@orbital/pulse-core";
 import { createHmac, timingSafeEqual } from "crypto";
 
-import type { WebhookConfig } from "./types.js";
+import type { VerifyWebhookOptions, WebhookConfig } from "./types.js";
+import { DEFAULT_MAX_AGE_MS, DEFAULT_CLOCK_SKEW_MS } from "./types.js";
 export { verifyWebhookEdge } from "./edge.js";
-export type { WebhookConfig } from "./types.js";
+export type { VerifyWebhookOptions, WebhookConfig } from "./types.js";
 
-type ResolvedWebhookConfig = Omit<Required<WebhookConfig>, "url"> & {
+type ResolvedWebhookConfig = Omit<Required<WebhookConfig>, "url" | "urlValidator"> & {
   urls: string[];
+  urlValidator?: WebhookConfig["urlValidator"];
 };
 
 export class WebhookDelivery {
@@ -46,6 +48,25 @@ export class WebhookDelivery {
     attempt = 1,
   ): Promise<void> {
     if (this.watcher.stopped) return;
+
+    let customValidationError: string | null = null;
+    try {
+      customValidationError = this.config.urlValidator
+        ? await this.config.urlValidator(url)
+        : null;
+    } catch (err) {
+      if (this.watcher.stopped) return;
+
+      this.emitFailure(event, url, this.getErrorMessage(err), attempt);
+      return;
+    }
+
+    if (this.watcher.stopped) return;
+
+    if (customValidationError) {
+      this.emitFailure(event, url, customValidationError, attempt);
+      return;
+    }
 
     const payload = JSON.stringify(event);
     const timestamp = Date.now().toString();
@@ -100,19 +121,28 @@ export class WebhookDelivery {
         }, delay);
         this.retryTimers.set(retryTimer, { event, url });
       } else {
-        this.watcher.emit("webhook.failed", {
-          ...event,
-          raw: {
-            error: errorMessage,
-            url,
-            attempts: attempt,
-            originalEvent: event,
-          },
-        } as unknown as NormalizedEvent);
+        this.emitFailure(event, url, errorMessage, attempt);
       }
     } finally {
       clearTimeout(abortTimer);
     }
+  }
+
+  private emitFailure(
+    event: NormalizedEvent,
+    url: string,
+    errorMessage: string,
+    attempt: number,
+  ): void {
+    this.watcher.emit("webhook.failed", {
+      ...event,
+      raw: {
+        error: errorMessage,
+        url,
+        attempts: attempt,
+        originalEvent: event,
+      },
+    } as unknown as NormalizedEvent);
   }
 
   private clearRetryTimers(): void {
@@ -144,8 +174,19 @@ export function verifyWebhook(
   signature: string,
   secret: string,
   timestamp: string,
+  options: VerifyWebhookOptions = {},
 ): NormalizedEvent | null {
   if (!/^\d+$/.test(timestamp)) return null;
+
+  const timestampMs = Number(timestamp);
+  if (!Number.isFinite(timestampMs)) return null;
+
+  const maxAgeMs = options.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
+  const clockSkewMs = options.clockSkewMs ?? DEFAULT_CLOCK_SKEW_MS;
+  const nowMs = options.nowMs ?? Date.now();
+
+  if (timestampMs > nowMs + clockSkewMs) return null;
+  if (timestampMs < nowMs - maxAgeMs - clockSkewMs) return null;
 
   const expected = createHmac("sha256", secret)
     .update(`${timestamp}.${payload}`)
