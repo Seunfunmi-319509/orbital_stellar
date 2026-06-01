@@ -23,7 +23,7 @@ import type {
   DataEvent,
   DataEventType,
   EngineStatus,
-  Logger,
+  HealthCheckResult,
   LiquidityPoolDepositEvent,
   LiquidityPoolReserve,
   LiquidityPoolWithdrawEvent,
@@ -86,7 +86,7 @@ const DEFAULT_RECONNECT: Required<ReconnectConfig> = {
 
 const STELLAR_MAX_TRUSTLINE_LIMIT = "922337203685.4775807";
 
-const noop: Logger = { info: () => {}, warn: () => {}, error: () => {} };
+const noop: Logger = { info: () => { }, warn: () => { }, error: () => { } };
 
 export class EventEngine {
   private server: Horizon.Server;
@@ -99,7 +99,6 @@ export class EventEngine {
   private pendingReconnectSuccessAttempt: number | null = null;
   private readonly reconnectConfig: Required<ReconnectConfig>;
   private isRunning = false;
-  private filters: Map<string, (event: NormalizedEvent) => boolean> = new Map();
   // Waiters for contract subscription activation: map contractId -> array of waiters
   private contractPollWaiters: Map<
     string,
@@ -110,16 +109,16 @@ export class EventEngine {
       timeout?: ReturnType<typeof setTimeout> | null;
     }>
   > = new Map();
-  private log: Required<NonNullable<CoreConfig["logger"]>>;
   private lastEventAt: string | null = null;
   private horizonCursor?: string;
   private filters: Map<string, (event: NormalizedEvent) => boolean> = new Map();
-  private log: Logger;
+  private log: Required<NonNullable<CoreConfig["logger"]>>;
   private cursorStore?: CursorStore;
   private streamKey: string;
   private cursorFailureThreshold: number;
   private consecutiveCursorFailures = 0;
   private isCursorStoreUnhealthy = false;
+  private pausedSources = new Set<"horizon" | "soroban">();
 
   /**
    * Creates a new EventEngine instance.
@@ -377,17 +376,6 @@ export class EventEngine {
     return true;
   }
 
-  status(): EngineStatus {
-    return {
-      running: this.isRunning,
-      watcherCount: this.registry.size,
-      contractWatcherCount: this.contractRegistry.size,
-      lastEventAt: this.lastEventAt,
-      reconnectAttempt: this.reconnectAttempt,
-      pausedSources: this.pausedSources.size > 0 ? Array.from(this.pausedSources) : undefined,
-    };
-  }
-
   async healthCheck(thresholdMs = 5 * 60 * 1000): Promise<HealthCheckResult> {
     const reasons: string[] = [];
     if (!this.isRunning) {
@@ -452,6 +440,7 @@ export class EventEngine {
     this.closeStream();
     this.isRunning = false;
     this.horizonCursor = undefined;
+    this.pausedSources.clear();
 
     this.notifyWatchers("engine.stopped", {
       type: "engine.stopped",
@@ -486,10 +475,12 @@ export class EventEngine {
     return {
       running: horizon.running || soroban.running,
       watcherCount: this.registry.size,
+      contractWatcherCount: this.contractRegistry.size,
       lastEventAt: lastEventAt.length
-        ? lastEventAt.sort()[lastEventAt.length - 1]
+        ? (lastEventAt.sort()[lastEventAt.length - 1] ?? null)
         : null,
       reconnectAttempt: Math.max(horizon.reconnectAttempt, soroban.reconnectAttempt),
+      pausedSources: this.pausedSources.size > 0 ? Array.from(this.pausedSources) : undefined,
       sources,
     };
   }
@@ -634,38 +625,41 @@ export class EventEngine {
       this.getNumericField(error, "statusCode") ??
       (this.isRecord(error.response)
         ? this.getNumericField(error.response, "status") ??
-          this.getNumericField(error.response, "statusCode")
+        this.getNumericField(error.response, "statusCode")
         : undefined)
     );
   }
 
-  private getHeaderValue(error: unknown, headerName: string): string | null {
-    if (!this.isRecord(error)) {
-      return null;
-    }
+  // TODO: Decide which getHeaderValue to use
+  // This is the original one when worked on the xdrFormat PR.
+  // Would comment this out, cos i am assuming it is meant to be stale.
+  // private getHeaderValue(error: unknown, headerName: string): string | null {
+  //   if (!this.isRecord(error)) {
+  //     return null;
+  //   }
 
-    const lowerName = headerName.toLowerCase();
-    const directHeader =
-      this.getStringField(error, headerName) ??
-      this.getStringField(error, lowerName);
-    if (directHeader) {
-      return directHeader;
-    }
+  //   const lowerName = headerName.toLowerCase();
+  //   const directHeader =
+  //     this.getStringField(error, headerName) ??
+  //     this.getStringField(error, lowerName);
+  //   if (directHeader) {
+  //     return directHeader;
+  //   }
 
-    const responseHeaders =
-      this.isRecord(error.response) && this.isRecord(error.response.headers)
-        ? error.response.headers
-        : undefined;
+  //   const responseHeaders =
+  //     this.isRecord(error.response) && this.isRecord(error.response.headers)
+  //       ? error.response.headers
+  //       : undefined;
 
-    for (const headers of [error.headers, responseHeaders]) {
-      const value = this.getHeaderValueFromHeaders(headers, headerName);
-      if (value) {
-        return value;
-      }
-    }
+  //   for (const headers of [error.headers, responseHeaders]) {
+  //     const value = this.getHeaderValueFromHeaders(headers, headerName);
+  //     if (value) {
+  //       return value;
+  //     }
+  //   }
 
-    return null;
-  }
+  //   return null;
+  // }
 
   private getHeaderValueFromHeaders(headers: unknown, headerName: string): string | null {
     const lowerName = headerName.toLowerCase();
@@ -700,6 +694,9 @@ export class EventEngine {
     return Number.isNaN(date) ? null : Math.max(date - Date.now(), 0);
   }
 
+  // TODO: Decide which getHeaderValue to use.
+  // This was introduced in a recent PR merge into main and intrduced here as a result of a merge conflict
+  // I am going to be leaving this active as i am assuming it is necessary for what is currently in main.
   private getHeaderValue(error: unknown, headerName: string): string | null {
     const e = error as Record<string, unknown>;
     const directHeader =
@@ -803,7 +800,7 @@ export class EventEngine {
 
   private describeSubscription(key: string): string {
     const name = this.subscriptionNames.get(key);
-    return name !== undefined ? `${name} (${key})` : key;
+    return name !== undefined ? `${name} (${key})` : `address ${key}`;
   }
 
   private normalize(record: unknown): NormalizedEventOrPending | null {
@@ -813,7 +810,12 @@ export class EventEngine {
       const requiredFields = ["to", "from", "amount", "created_at"] as const;
       for (const field of requiredFields) {
         if (typeof r[field] !== "string" || r[field] === "") {
-          this.log.warn("[pulse-core] normalize() dropping payment record.", { field, record: record });
+          this.log.warn("[pulse-core] normalize() dropping payment record.", {
+            field,
+            record,
+            source: r.from,
+            address: r.to,
+          });
           return null;
         }
       }
@@ -1601,29 +1603,32 @@ export class EventEngine {
     }
 
     if (event.type === "contract.invoked" || event.type === "contract.emitted") {
-      if (event.type === "contract.emitted" && this.abiRegistry) {
-        // Async enrichment: look up the ABI spec and populate decodedData,
-        // then route. The event is held until the lookup settles so that
-        // subscribers always receive a fully-enriched (or gracefully degraded)
-        // event rather than a partially-populated one.
-        const contractId = event.contractId;
-        this.abiRegistry.getSpec(contractId).then(
-          (spec) => {
-            if (spec !== null && spec !== undefined) {
-              (event as ContractEmittedEvent).decodedData = (spec as { entries?: unknown }).entries ?? spec;
-            }
-            this.dispatchContractEvent(event);
-          },
-          (err: unknown) => {
-            this.log.warn("ABI registry lookup failed for contract.emitted event", {
-              contractId,
-              error: err instanceof Error ? err.message : String(err),
-            });
-            this.dispatchContractEvent(event);
-          }
-        );
-        return;
-      }
+      // NB: This was merged in by a previous PR into main, now pulled in here because of conflict resolution
+      // Going ahead to comment it out for the sake of this PR.
+      // TODO: REMOVE THIS COMMENT BLOCK when the missing abiRegistry property is fixed
+      // if (event.type === "contract.emitted" && this.abiRegistry) {
+      //   // Async enrichment: look up the ABI spec and populate decodedData,
+      //   // then route. The event is held until the lookup settles so that
+      //   // subscribers always receive a fully-enriched (or gracefully degraded)
+      //   // event rather than a partially-populated one.
+      //   const contractId = event.contractId;
+      //   this.abiRegistry.getSpec(contractId).then(
+      //     (spec) => {
+      //       if (spec !== null && spec !== undefined) {
+      //         (event as ContractEmittedEvent).decodedData = (spec as { entries?: unknown }).entries ?? spec;
+      //       }
+      //       this.dispatchContractEvent(event);
+      //     },
+      //     (err: unknown) => {
+      //       this.log.warn("ABI registry lookup failed for contract.emitted event", {
+      //         contractId,
+      //         error: err instanceof Error ? err.message : String(err),
+      //       });
+      //       this.dispatchContractEvent(event);
+      //     }
+      //   );
+      //   return;
+      // }
 
       this.dispatchContractEvent(event);
       return;
@@ -1686,6 +1691,7 @@ export class EventEngine {
 
 /** @internal */
 export interface RpcContractInvokedEvent {
+// export interface SorobanContractInvokedEvent {
   type: "contract_invoked";
   id: string;
   pagingToken: string;
@@ -1699,6 +1705,7 @@ export interface RpcContractInvokedEvent {
 
 /** @internal */
 export interface RpcContractEmittedEvent {
+// export interface SorobanContractEmittedEvent {
   type: "contract_emitted";
   id: string;
   pagingToken: string;
@@ -1717,8 +1724,10 @@ export interface RpcContractEmittedEvent {
  * Handles malformed fields safely by logging warnings and returning null.
  */
 export function normalizeContractEvent(
-  rawRpcEvent: unknown
+  rawRpcEvent: any
 ): RpcContractInvokedEvent | RpcContractEmittedEvent | null {
+// export function normalizeContractEvent(rawRpcEvent: any): SorobanContractInvokedEvent | SorobanContractEmittedEvent | null {
+  // 1. Structural check patterns
   if (!rawRpcEvent || typeof rawRpcEvent !== "object") {
     console.warn(
       "[pulse-core] Dropping malformed Soroban event: payload is not a valid object.",
