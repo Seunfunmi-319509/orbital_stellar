@@ -16,6 +16,8 @@ export { StrKey } from "@stellar/stellar-sdk";
 export { CursorStore } from "./CursorStore.js";
 export { PostgresCursorStore, PgLike } from "./PostgresCursorStore.js";
 export { cacheCursorStore } from "./cacheCursorStore.js";
+export { migrateCursors } from "./migrateCursors.js";
+export type { MigrateCursorsResult } from "./migrateCursors.js";
 export { evaluatePredicate, normalizeClaimPredicate, isClaimPredicateType } from "./claimPredicate.js";
 export type { ClaimPredicate } from "./claimPredicate.js";
 export type { StellarAmount } from "./amount.js";
