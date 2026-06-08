@@ -6,9 +6,14 @@ export { SorobanSubscriber } from "./SorobanSubscriber.js";
 export type { SorobanSubscriberOptions, ReconnectingPayload } from "./SorobanSubscriber.js";
 export { validateContractFilters } from "./contractFilters.js";
 export { Watcher } from "./Watcher.js";
-export { EngineAlreadyStartedError, HorizonStreamError, SorobanRpcError, isSorobanRpcError } from "./errors.js";
-export type { SorobanRpcErrorCode, SorobanRpcErrorOptions } from "./errors.js";
-export type { SorobanGetEventsResponse, SorobanRpcClientOptions, SorobanRpcEvent } from "./SorobanRpcClient.js";
+export { SorobanSubscriber } from "./SorobanSubscriber.js";
+export type {
+  SorobanSubscriberOptions,
+  SorobanRpc,
+  SorobanEvent,
+  CursorStore as SorobanCursorStore,
+} from "./SorobanSubscriber.js";
+export { EngineAlreadyStartedError, HorizonStreamError } from "./errors.js";
 export { StrKey } from "@stellar/stellar-sdk";
 export { CursorStore } from "./CursorStore.js";
 export { MemoryCursorStore } from "./MemoryCursorStore.js";
