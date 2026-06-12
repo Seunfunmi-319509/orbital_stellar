@@ -50,6 +50,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Lint packages
         run: pnpm lint
+      - name: Check formatting
+        run: pnpm format:check
 
   typecheck-packages:
     needs: changes
