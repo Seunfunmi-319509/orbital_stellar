@@ -130,26 +130,25 @@ describe("SorobanRpcClient — authenticated RPC providers", () => {
         json: async () => ({ jsonrpc: "2.0", id: 1, result: {} }),
       });
       vi.stubGlobal("fetch", fetchMock);
-      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 
       const client = new SorobanRpcClient({
         url: "https://soroban-rpc.example.com",
         headers: {
           Authorization: "Bearer super-secret-token-abc-123",
         },
+        logger,
       });
 
       await client.request("ping");
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        "[SorobanRpcClient] Sending request:",
-        "ping",
-        "with headers:",
-        { Authorization: "[REDACTED]" }
+      expect(logger.debug).toHaveBeenCalledWith(
+        "[SorobanRpcClient] sending request",
+        { method: "ping", headers: { Authorization: "[REDACTED]" } }
       );
-      // Verify the actual secret value does not appear in any log call
-      expect(consoleSpy).not.toHaveBeenCalledWith(
-        expect.stringContaining("super-secret-token-abc-123")
+      // The raw secret must never appear in any logged metadata.
+      expect(JSON.stringify(logger.debug.mock.calls)).not.toContain(
+        "super-secret-token-abc-123"
       );
     });
 
@@ -160,7 +159,7 @@ describe("SorobanRpcClient — authenticated RPC providers", () => {
         json: async () => ({ jsonrpc: "2.0", id: 1, result: {} }),
       });
       vi.stubGlobal("fetch", fetchMock);
-      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
 
       const client = new SorobanRpcClient({
         url: "https://soroban-rpc.example.com",
@@ -168,15 +167,14 @@ describe("SorobanRpcClient — authenticated RPC providers", () => {
           "X-Api-Key": "my-api-key",
           "X-Secret": "my-secret-value",
         },
+        logger,
       });
 
       await client.request("ping");
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        "[SorobanRpcClient] Sending request:",
-        "ping",
-        "with headers:",
-        { "X-Api-Key": "[REDACTED]", "X-Secret": "[REDACTED]" }
+      expect(logger.debug).toHaveBeenCalledWith(
+        "[SorobanRpcClient] sending request",
+        { method: "ping", headers: { "X-Api-Key": "[REDACTED]", "X-Secret": "[REDACTED]" } }
       );
     });
   });

@@ -403,21 +403,8 @@ export interface Logger {
   info(message: string, meta?: Record<string, unknown>): void;
   warn(message: string, meta?: Record<string, unknown>): void;
   error(message: string, meta?: Record<string, unknown>): void;
-}
-
-/**
- * Core configuration for initializing the EventEngine.
- *
- * @example
- * const config: CoreConfig = {
- *   network: "testnet",
- *   reconnect: { initialDelayMs: 2000, maxRetries: 5 }
- * };
- */
-export interface Logger {
-  info(message: string, meta?: Record<string, unknown>): void;
-  warn(message: string, meta?: Record<string, unknown>): void;
-  error(message: string, meta?: Record<string, unknown>): void;
+  /** Optional verbose channel for per-request / per-event diagnostics. */
+  debug?(message: string, meta?: Record<string, unknown>): void;
 }
 
 /**

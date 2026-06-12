@@ -1,4 +1,4 @@
-import type { ContractSubscriptionFilter } from "./index.js";
+import type { ContractSubscriptionFilter, Logger } from "./index.js";
 import { SorobanRpcError, type SorobanRpcErrorCode } from "./errors.js";
 
 export type SorobanNetworkInfo = {
@@ -29,6 +29,8 @@ export interface SorobanRpcClientOptions {
   headers?: Record<string, string>;
   /** Injectable `fetch` implementation (for testing). Defaults to `globalThis.fetch`. */
   fetchImpl?: typeof fetch;
+  /** Optional logger. Per-request diagnostics go to `logger.debug` (header values redacted). */
+  logger?: Logger;
 }
 
 /** Result of a `getEvents` call: the JSON-RPC `result` payload with `events` guaranteed. */
@@ -118,6 +120,7 @@ export class SorobanRpcClient {
   private readonly url: string;
   private readonly headers: Record<string, string>;
   private readonly fetchImpl?: typeof fetch;
+  private readonly logger?: Logger;
 
   /**
    * @param options - Configuration for the RPC client.
@@ -126,6 +129,7 @@ export class SorobanRpcClient {
     this.url = (options.rpcUrl ?? options.url) as string;
     this.headers = { ...(options.headers ?? {}) };
     this.fetchImpl = options.fetchImpl;
+    this.logger = options.logger;
   }
 
   /**
@@ -159,12 +163,10 @@ export class SorobanRpcClient {
       params,
     });
 
-    console.log(
-      "[SorobanRpcClient] Sending request:",
+    this.logger?.debug?.("[SorobanRpcClient] sending request", {
       method,
-      "with headers:",
-      this.getRedactedHeaders()
-    );
+      headers: this.getRedactedHeaders(),
+    });
 
     const fetchImpl = this.fetchImpl ?? globalThis.fetch;
 

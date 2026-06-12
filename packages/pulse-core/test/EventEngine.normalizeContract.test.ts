@@ -35,17 +35,17 @@ describe("Soroban Event Normalizer Utility Suite", () => {
     expect(emittedEvent.raw).toStrictEqual(mockTestnetEvent);
   });
 
-  it("should output null and log a console warning for broken payloads instead of throwing", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("should output null and log a warning for broken payloads instead of throwing", () => {
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
     const brokenPayload = {
       type: "contract",
       ledger: 485921,
     };
 
-    const result = normalizeContractEvent(brokenPayload);
+    const result = normalizeContractEvent(brokenPayload, logger);
 
     expect(result).toBeNull();
-    expect(warnSpy).toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalled();
   });
 });
