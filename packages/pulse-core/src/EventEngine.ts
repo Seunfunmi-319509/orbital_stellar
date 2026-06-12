@@ -157,7 +157,7 @@ export class EventEngine {
   private lastEventAt: string | null = null;
   private horizonCursor?: string;
   private filters: Map<string, (event: NormalizedEvent) => boolean> = new Map();
-  private log: Required<NonNullable<CoreConfig["logger"]>>;
+  private log: Logger;
   private cursorStore?: CursorStore;
   private readonly network: Network;
   private streamKey: string;
@@ -1886,14 +1886,14 @@ export interface RpcContractEmittedEvent {
  * Handles malformed fields safely by logging warnings and returning null.
  */
 export function normalizeContractEvent(
-  rawRpcEvent: any
+  rawRpcEvent: any,
+  logger?: Logger
 ): RpcContractInvokedEvent | RpcContractEmittedEvent | null {
-  // export function normalizeContractEvent(rawRpcEvent: any): SorobanContractInvokedEvent | SorobanContractEmittedEvent | null {
   // 1. Structural check patterns
   if (!rawRpcEvent || typeof rawRpcEvent !== "object") {
-    console.warn(
+    logger?.warn(
       "[pulse-core] Dropping malformed Soroban event: payload is not a valid object.",
-      rawRpcEvent
+      { event: rawRpcEvent }
     );
     return null;
   }
@@ -1911,9 +1911,9 @@ export function normalizeContractEvent(
   ];
   for (const field of requiredFields) {
     if (e[field] === undefined || e[field] === null) {
-      console.warn(
+      logger?.warn(
         `[pulse-core] Dropping malformed Soroban event: missing required field "${field}".`,
-        rawRpcEvent
+        { event: rawRpcEvent }
       );
       return null;
     }
@@ -1932,7 +1932,7 @@ export function normalizeContractEvent(
 
   if (type === "system" || type === "diagnostic") {
     if (typeof rawRpcEvent.function !== "string") {
-      console.warn("[pulse-core] Dropping malformed contract invoked event: missing function field.", rawRpcEvent);
+      logger?.warn("[pulse-core] Dropping malformed contract invoked event: missing function field.", { event: rawRpcEvent });
       return null;
     }
     return {
@@ -1950,9 +1950,9 @@ export function normalizeContractEvent(
 
   if (type === "contract") {
     if (!Array.isArray(topic) || value === undefined || value === null) {
-      console.warn(
+      logger?.warn(
         "[pulse-core] Dropping malformed contract emitted event: missing topics array or data payload.",
-        rawRpcEvent
+        { event: rawRpcEvent }
       );
       return null;
     }
@@ -1972,9 +1972,9 @@ export function normalizeContractEvent(
     };
   }
 
-  console.warn(
+  logger?.warn(
     `[pulse-core] Dropping malformed Soroban event: unknown event type category "${type}".`,
-    rawRpcEvent
+    { event: rawRpcEvent }
   );
   return null;
 }

@@ -2,6 +2,7 @@ import { promises as fsPromises, constants as fsConstants } from "fs";
 import fs from "fs";
 import path from "path";
 import { CursorStore } from "./CursorStore.js";
+import type { Logger } from "./index.js";
 
 function safeFilename(streamKey: string): string {
   return encodeURIComponent(streamKey) + ".json";
@@ -9,10 +10,12 @@ function safeFilename(streamKey: string): string {
 
 export class FileCursorStore extends CursorStore {
   private readonly dir: string;
+  private readonly logger?: Logger;
 
-  constructor(dir: string) {
+  constructor(dir: string, logger?: Logger) {
     super();
     this.dir = dir;
+    this.logger = logger;
   }
 
   private filePathFor(streamKey: string): string {
@@ -32,8 +35,9 @@ export class FileCursorStore extends CursorStore {
         if (parsed && typeof parsed.cursor === "string") return parsed.cursor;
         return null;
       } catch (err) {
-        console.warn(
+        this.logger?.warn(
           `FileCursorStore: failed to parse cursor file ${file}, treating as missing`,
+          { file },
         );
         return null;
       }
